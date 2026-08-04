@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Geomarketing Daily News Aggregator - FIXED VERSION
+Geomarketing Daily News Aggregator - WITH EMAIL SUPPORT
 Lädt täglich um 8 Uhr Geomarketing-relevante News von definierten Quellen
+Sendet die Ergebnisse per Email
 """
 
 import json
@@ -10,6 +11,9 @@ from datetime import datetime
 from typing import List, Dict
 import requests
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 SOURCES = {
     'DESTATIS': ['Einzelhandel', 'Demografie', 'Standort', 'Regionalentwicklung'],
@@ -33,6 +37,7 @@ class GeomarketingNewsScraper:
             raise ValueError("ANTHROPIC_API_KEY not set. Set it via environment variable or pass it directly.")
         self.results = []
         self.base_url = 'https://api.anthropic.com/v1/messages'
+        self.gmail_password = os.getenv('GMAIL_PASSWORD', '')
         
     def search_source(self, source_name: str, keywords: List[str]) -> List[Dict]:
         """Suche eine Quelle mit Keywords via Claude + Web Search"""
@@ -117,6 +122,67 @@ class GeomarketingNewsScraper:
         print(f'💾 Ergebnisse gespeichert: {filepath}')
         return filepath
     
+    def send_email(self, to_email: str):
+        """Sende Report per Gmail"""
+        if not self.gmail_password:
+            print('⚠️ GMAIL_PASSWORD nicht gesetzt. Email wird übersprungen.')
+            return
+        
+        try:
+            gmail_user = 'geomarketing-news@gmail.com'
+            subject = f"Geomarketing Daily News - {datetime.now().strftime('%d.%m.%Y')}"
+            
+            html_content = f"""
+            <html>
+              <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                <h2>Geomarketing Daily News</h2>
+                <p><strong>Datum:</strong> {datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
+                
+                <h3>Zusammenfassung</h3>
+                <p>Gescannt: {len(SOURCES)} Quellen | Artikel gefunden: {len(self.results)}</p>
+                
+                <h3>Artikel</h3>
+                <ul>
+            """
+            
+            for article in self.results:
+                html_content += f"""
+                  <li>
+                    <strong>{article['source']}:</strong> {article['title']}
+                    <br/><small>Keywords: {article['keywords']} | Relevanz: {article['relevance']}</small>
+                  </li>
+                """
+            
+            html_content += """
+                </ul>
+                <hr>
+                <p style="font-size: 12px; color: #666;">
+                  Diese Email wurde automatisch von GitHub Actions generiert.
+                </p>
+              </body>
+            </html>
+            """
+            
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = gmail_user
+            msg['To'] = to_email
+            
+            msg.attach(MIMEText(html_content, 'html'))
+            
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
+                server.login(gmail_user, self.gmail_password)
+                server.send_message(msg)
+            
+            print(f'✅ Email versendet an {to_email}')
+            
+        except smtplib.SMTPAuthenticationError:
+            print('❌ Gmail-Login fehlgeschlagen. Überprüfe App-Passwort.')
+        except smtplib.SMTPException as e:
+            print(f'❌ Email-Fehler: {str(e)}')
+        except Exception as e:
+            print(f'❌ Fehler beim Email-Versand: {str(e)}')
+    
     def print_report(self):
         """Drucke einen schönen Report in die Konsole"""
         print('\n' + '=' * 80)
@@ -140,6 +206,7 @@ def main():
     
     parser = argparse.ArgumentParser(description='Geomarketing Daily News Aggregator')
     parser.add_argument('--output', default=None, help='JSON-Ausgabedatei')
+    parser.add_argument('--email', default=None, help='Email-Adresse für Report')
     
     args = parser.parse_args()
     
@@ -150,6 +217,9 @@ def main():
         scraper.save_to_json(args.output)
     else:
         scraper.save_to_json()
+    
+    if args.email:
+        scraper.send_email(args.email)
     
     scraper.print_report()
 
