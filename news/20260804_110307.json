@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-08-04T11:03:28.872521",
+  "articles_count": 3,
+  "max_age_days": 90,
+  "articles": [
+    {
+      "source": "mbi geodata",
+      "title": "MBI Weltweite GeodatenWeltweit einheitlich und vergleichbar",
+      "url": "https://www.mbi-geodata.com/de",
+      "keywords": "geodaten, geomarketing",
+      "relevance": "Mittel",
+      "timestamp": "2026-08-04T11:03:27.866461",
+      "publish_date": "Unbekannt"
+    },
+    {
+      "source": "mbi geodata",
+      "title": "Einzelhandel",
+      "url": "https://www.mbi-geodata.com/de/tag/einzelhandel/",
+      "keywords": "geodaten, geomarketing",
+      "relevance": "Mittel",
+      "timestamp": "2026-08-04T11:03:27.866851",
+      "publish_date": "Unbekannt"
+    },
+    {
+      "source": "mbi geodata",
+      "title": "Standortanalyse",
+      "url": "https://www.mbi-geodata.com/de/tag/standortanalyse/",
+      "keywords": "geodaten, geomarketing",
+      "relevance": "Mittel",
+      "timestamp": "2026-08-04T11:03:27.867024",
+      "publish_date": "Unbekannt"
+    }
+  ]
+}
