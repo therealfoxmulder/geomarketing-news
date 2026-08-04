@@ -14,7 +14,7 @@ SOURCES = {
     'BBSR': ['ÖPNV', 'Leerstand', 'Nahversorgung'],
     'HDE': ['Filialschließung', 'Filialnetze', 'Mediareichweite'],
     'IW Köln': ['Demografie', 'Kita', 'Bevölkerungsrückgang'],
-    'LinkedIn Geomarketing': ['Standortanalyse', 'Zentralität', 'Besucherfrequenzen'],
+    'Reddit Geomarketing': ['Standortanalyse', 'Zentralität', 'Besucherfrequenzen'],
     'NIQ Reports': ['Kaufkraft', 'Zentralität', 'Ladeinfrastruktur']
 }
 
