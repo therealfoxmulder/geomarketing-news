@@ -17,12 +17,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
       - run: |
-          python geomarketing_daily_scraper.py --output "news/$(date +%Y%m%d_%H%M%S).json"
+          python geomarketing_daily_scraper.py --output "news/$(date +%Y%m%d_%H%M%S).json" --email carstenbuchart@gmail.com
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
       - run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add news/
+          git add news/ || true
           git commit -m "Daily news $(date +%Y-%m-%d)" || true
-          git push
+          git push || true
