@@ -65,12 +65,7 @@ class GeomarketingNewsScraper:
             data = response.json()
             
             if self.debug:
-                print(f'   📝 API Response-Type: {type(data)}')
-                print(f'   📝 API Response Keys: {data.keys() if isinstance(data, dict) else "N/A"}')
-                if isinstance(data, dict) and 'content' in data:
-                    print(f'   📝 Content Blocks: {len(data.get("content", []))} Blöcke')
-                    for idx, block in enumerate(data.get("content", [])):
-                        print(f'      Block {idx}: {block.get("type")} - {str(block)[:100]}...')
+                print(f'   📝 API Response: {data}')
             
             articles = []
             for content_block in data.get('content', []):
@@ -149,6 +144,79 @@ class GeomarketingNewsScraper:
             gmail_user = 'carstenbuchart@gmail.com'
             subject = f"Geomarketing Daily News - {datetime.now().strftime('%d.%m.%Y')}"
             
-            html_content = f"""
-            <html>
-              <body style="font-family: Arial,
+            html_content = '<html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">'
+            html_content += '<h2 style="color: #0b2540;">Geomarketing Daily News</h2>'
+            html_content += f'<p><strong>Datum:</strong> {datetime.now().strftime("%d.%m.%Y %H:%M")}</p>'
+            html_content += f'<p><strong>Quellen gescannt:</strong> {len(SOURCES)}</p>'
+            html_content += f'<p><strong>Artikel gefunden:</strong> {len(self.results)}</p>'
+            html_content += '<hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;">'
+            html_content += '<h3 style="color: #0b2540;">Artikel</h3>'
+            
+            if self.results:
+                html_content += '<ul style="line-height: 1.8;">'
+                for article in self.results:
+                    html_content += '<li>'
+                    html_content += f'<strong>{article["source"]}</strong><br>'
+                    html_content += f'{article["title"]}<br>'
+                    html_content += f'<small style="color: #666;">Keywords: {article["keywords"]} | Relevanz: {article["relevance"]}</small>'
+                    html_content += '</li>'
+                html_content += '</ul>'
+            else:
+                html_content += '<p style="color: #999;">Keine Artikel gefunden.</p>'
+            
+            html_content += '<hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;">'
+            html_content += '<p style="font-size: 12px; color: #999;">'
+            html_content += 'Diese Email wurde automatisch von GitHub Actions generiert.<br>'
+            html_content += 'NIQ Geomarketing | Carsten Buchart'
+            html_content += '</p></body></html>'
+            
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = gmail_user
+            msg['To'] = to_email
+            msg.attach(MIMEText(html_content, 'html'))
+            
+            print(f'📧 Versuche Email zu versenden an {to_email}...')
+            
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
+                server.login(gmail_user, self.gmail_password)
+                server.send_message(msg)
+            
+            print(f'✅ Email erfolgreich versendet an {to_email}')
+            
+        except smtplib.SMTPAuthenticationError:
+            print('❌ Gmail-Login fehlgeschlagen. Überprüfe dein App-Passwort.')
+        except smtplib.SMTPException as e:
+            print(f'❌ SMTP-Fehler: {str(e)}')
+        except Exception as e:
+            print(f'❌ Fehler beim Email-Versand: {str(e)}')
+
+
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Geomarketing Daily News Aggregator')
+    parser.add_argument('--output', default=None, help='JSON-Ausgabedatei')
+    parser.add_argument('--email', default=None, help='Email-Adresse für Versand')
+    parser.add_argument('--debug', action='store_true', help='Debug-Modus aktivieren')
+    
+    args = parser.parse_args()
+    
+    scraper = GeomarketingNewsScraper(debug=args.debug)
+    scraper.run_daily_scan()
+    
+    if args.output:
+        scraper.save_to_json(args.output)
+    else:
+        scraper.save_to_json()
+    
+    if args.email:
+        scraper.send_email(args.email)
+    
+    print('\n' + '=' * 80)
+    print('BERICHT ABGESCHLOSSEN')
+    print('=' * 80)
+
+
+if __name__ == '__main__':
+    main()
