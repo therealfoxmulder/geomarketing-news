@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Geomarketing Daily News Aggregator
+Geomarketing Daily News Aggregator - FIXED VERSION
 Lädt täglich um 8 Uhr Geomarketing-relevante News von definierten Quellen
-Fasst zusammen und sendet per Email/Slack oder speichert lokal
 """
 
 import json
@@ -11,9 +10,6 @@ from datetime import datetime
 from typing import List, Dict
 import requests
 import time
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 SOURCES = {
     'DESTATIS': ['Einzelhandel', 'Demografie', 'Standort', 'Regionalentwicklung'],
@@ -33,6 +29,8 @@ GEOMARKETING_KEYWORDS = [
 class GeomarketingNewsScraper:
     def __init__(self, anthropic_api_key: str = None):
         self.api_key = anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
+        if not self.api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set. Set it via environment variable or pass it directly.")
         self.results = []
         self.base_url = 'https://api.anthropic.com/v1/messages'
         
@@ -46,7 +44,7 @@ class GeomarketingNewsScraper:
             'tools': [{'type': 'web_search_20250305', 'name': 'web_search'}],
             'messages': [{
                 'role': 'user',
-                'content': f'Finde 2-3 aktuelle News zu "{search_query}" für Geomarketing/Standortplanung relevant. Gib mir Titel, URL-Beschreibung, Datum und ein 2-3 Stichwörter pro Artikel.'
+                'content': f'Finde 2-3 aktuelle News zu "{search_query}" für Geomarketing/Standortplanung relevant. Gib mir Titel, URL-Beschreibung, Datum und 2-3 Stichwörter pro Artikel.'
             }]
         }
         
@@ -100,53 +98,16 @@ class GeomarketingNewsScraper:
         print(f'\n✅ Scan abgeschlossen. {len(self.results)} relevante Artikel gefunden.')
         return self.results
     
-    def generate_summary(self) -> str:
-        """Generiere eine Zusammenfassung der Ergebnisse"""
-        if not self.results:
-            return 'Keine neuen Geomarketing-News heute verfügbar.'
-        
-        payload = {
-            'model': 'claude-sonnet-4-6',
-            'max_tokens': 400,
-            'messages': [{
-                'role': 'user',
-                'content': f"""Fasse diese Geomarketing-News-Artikel in 3-4 Sätzen zusammen.
-                Focus: Welche Trends sehen wir? Welche Branchen (Finance, Retail, Public Sector) sind betroffen?
-                
-                Artikel:
-                {json.dumps(self.results, indent=2, ensure_ascii=False)}
-                
-                Antworte auf Deutsch, prägnant, keine Floskeln."""
-            }]
-        }
-        
-        headers = {
-            'x-api-key': self.api_key,
-            'Content-Type': 'application/json'
-        }
-        
-        try:
-            response = requests.post(self.base_url, json=payload, headers=headers, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            
-            for content_block in data.get('content', []):
-                if content_block.get('type') == 'text':
-                    return content_block.get('text', 'Zusammenfassung konnte nicht generiert werden.')
-        except requests.exceptions.RequestException as e:
-            print(f'❌ Fehler bei Zusammenfassung: {str(e)}')
-        
-        return 'Zusammenfassung nicht verfügbar.'
-    
     def save_to_json(self, filepath: str = None):
         """Speichere Ergebnisse als JSON"""
         if filepath is None:
-            filepath = f"geomarketing_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            filepath = f"news/geomarketing_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        
+        os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else '.', exist_ok=True)
         
         data = {
             'timestamp': datetime.now().isoformat(),
             'articles_count': len(self.results),
-            'summary': self.generate_summary(),
             'articles': self.results
         }
         
@@ -155,54 +116,6 @@ class GeomarketingNewsScraper:
         
         print(f'💾 Ergebnisse gespeichert: {filepath}')
         return filepath
-    
-    def send_email(self, to_email: str, smtp_config: Dict):
-        """Sende Zusammenfassung per Email"""
-        summary = self.generate_summary()
-        
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"Geomarketing Daily News - {datetime.now().strftime('%d.%m.%Y')}"
-        msg['From'] = smtp_config['from_email']
-        msg['To'] = to_email
-        
-        html = f"""
-        <html>
-          <body style="font-family: Arial, sans-serif; line-height: 1.6;">
-            <h2>Geomarketing Daily News</h2>
-            <p><strong>Datum:</strong> {datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
-            
-            <h3>Zusammenfassung</h3>
-            <p>{summary}</p>
-            
-            <h3>Artikel ({len(self.results)})</h3>
-            <ul>
-        """
-        
-        for article in self.results:
-            html += f"""
-              <li>
-                <strong>{article['source']}:</strong> {article['title']}
-                <br/><small>Keywords: {article['keywords']} | Relevanz: {article['relevance']}</small>
-              </li>
-            """
-        
-        html += """
-            </ul>
-          </body>
-        </html>
-        """
-        
-        msg.attach(MIMEText(html, 'html'))
-        
-        try:
-            with smtplib.SMTP(smtp_config['host'], smtp_config['port']) as server:
-                if smtp_config.get('use_tls'):
-                    server.starttls()
-                server.login(smtp_config['username'], smtp_config['password'])
-                server.send_message(msg)
-            print(f'📧 Email versendet an {to_email}')
-        except smtplib.SMTPException as e:
-            print(f'❌ Email-Fehler: {str(e)}')
     
     def print_report(self):
         """Drucke einen schönen Report in die Konsole"""
@@ -218,9 +131,6 @@ class GeomarketingNewsScraper:
             print(f'   Keywords: {article["keywords"]} | Relevanz: {article["relevance"]}')
             print()
         
-        print('ZUSAMMENFASSUNG')
-        print('-' * 80)
-        print(self.generate_summary())
         print('=' * 80)
 
 
@@ -229,14 +139,11 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Geomarketing Daily News Aggregator')
-    parser.add_argument('--api-key', default=None, help='Anthropic API Key (default: ANTHROPIC_API_KEY env var)')
     parser.add_argument('--output', default=None, help='JSON-Ausgabedatei')
-    parser.add_argument('--email-to', default=None, help='Email-Adresse für Report')
-    parser.add_argument('--smtp-config', default=None, help='SMTP-Config JSON-Datei')
     
     args = parser.parse_args()
     
-    scraper = GeomarketingNewsScraper(api_key=args.api_key)
+    scraper = GeomarketingNewsScraper()
     scraper.run_daily_scan()
     
     if args.output:
@@ -245,11 +152,6 @@ def main():
         scraper.save_to_json()
     
     scraper.print_report()
-    
-    if args.email_to and args.smtp_config:
-        with open(args.smtp_config, 'r') as f:
-            smtp_config = json.load(f)
-        scraper.send_email(args.email_to, smtp_config)
 
 
 if __name__ == '__main__':
