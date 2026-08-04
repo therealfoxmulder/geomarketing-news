@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-Geomarketing Daily News Aggregator - WITH EMAIL SUPPORT
-Lädt täglich um 8 Uhr Geomarketing-relevante News von definierten Quellen
-Sendet die Ergebnisse per Email
-"""
-
 import json
 import os
 from datetime import datetime
@@ -34,13 +28,12 @@ class GeomarketingNewsScraper:
     def __init__(self, anthropic_api_key: str = None):
         self.api_key = anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
         if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not set. Set it via environment variable or pass it directly.")
+            raise ValueError("ANTHROPIC_API_KEY not set.")
         self.results = []
         self.base_url = 'https://api.anthropic.com/v1/messages'
         self.gmail_password = os.getenv('GMAIL_PASSWORD', '')
         
     def search_source(self, source_name: str, keywords: List[str]) -> List[Dict]:
-        """Suche eine Quelle mit Keywords via Claude + Web Search"""
         search_query = f"{source_name} {' '.join(keywords[:2])} 2024 2025 geomarketing"
         
         payload = {
@@ -49,7 +42,7 @@ class GeomarketingNewsScraper:
             'tools': [{'type': 'web_search_20250305', 'name': 'web_search'}],
             'messages': [{
                 'role': 'user',
-                'content': f'Finde 2-3 aktuelle News zu "{search_query}" für Geomarketing/Standortplanung relevant. Gib mir Titel, URL-Beschreibung, Datum und 2-3 Stichwörter pro Artikel.'
+                'content': f'Finde 2-3 aktuelle News zu "{search_query}" für Geomarketing/Standortplanung relevant. Gib mir Titel und 2-3 Stichwörter pro Artikel.'
             }]
         }
         
@@ -78,13 +71,12 @@ class GeomarketingNewsScraper:
             
             return articles[:2]
             
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             print(f'❌ Fehler bei {source_name}: {str(e)}')
             return []
     
     def run_daily_scan(self):
-        """Scanne alle Quellen nacheinander"""
-        print(f'\n🔍 Starte tägliche Geomarketing-News-Suche um {datetime.now().strftime("%H:%M:%S")}')
+        print(f'\n🔍 Starte tägliche Suche um {datetime.now().strftime("%H:%M:%S")}')
         print('=' * 60)
         
         for source_name, keywords in SOURCES.items():
@@ -96,15 +88,14 @@ class GeomarketingNewsScraper:
                 for article in articles:
                     print(f'  ✓ {article["title"][:60]}…')
             else:
-                print(f'  - Keine relevanten Ergebnisse')
+                print(f'  - Keine Ergebnisse')
             
             time.sleep(0.5)
         
-        print(f'\n✅ Scan abgeschlossen. {len(self.results)} relevante Artikel gefunden.')
+        print(f'\n✅ {len(self.results)} Artikel gefunden.')
         return self.results
     
     def save_to_json(self, filepath: str = None):
-        """Speichere Ergebnisse als JSON"""
         if filepath is None:
             filepath = f"news/geomarketing_news_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         
@@ -119,45 +110,50 @@ class GeomarketingNewsScraper:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         
-        print(f'💾 Ergebnisse gespeichert: {filepath}')
+        print(f'💾 Gespeichert: {filepath}')
         return filepath
     
     def send_email(self, to_email: str):
-        """Sende Report per Gmail"""
         if not self.gmail_password:
-            print('⚠️ GMAIL_PASSWORD nicht gesetzt. Email wird übersprungen.')
+            print('⚠️ GMAIL_PASSWORD nicht gesetzt.')
             return
         
         try:
-            gmail_user = 'geomarketing-news@gmail.com'
+            gmail_user = 'carstenbuchart@gmail.com'
             subject = f"Geomarketing Daily News - {datetime.now().strftime('%d.%m.%Y')}"
             
             html_content = f"""
             <html>
-              <body style="font-family: Arial, sans-serif; line-height: 1.6;">
-                <h2>Geomarketing Daily News</h2>
+              <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <h2 style="color: #0b2540;">Geomarketing Daily News</h2>
                 <p><strong>Datum:</strong> {datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
+                <p><strong>Quellen gescannt:</strong> {len(SOURCES)}</p>
+                <p><strong>Artikel gefunden:</strong> {len(self.results)}</p>
                 
-                <h3>Zusammenfassung</h3>
-                <p>Gescannt: {len(SOURCES)} Quellen | Artikel gefunden: {len(self.results)}</p>
+                <hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;">
                 
-                <h3>Artikel</h3>
-                <ul>
+                <h3 style="color: #0b2540;">Artikel</h3>
             """
             
-            for article in self.results:
-                html_content += f"""
-                  <li>
-                    <strong>{article['source']}:</strong> {article['title']}
-                    <br/><small>Keywords: {article['keywords']} | Relevanz: {article['relevance']}</small>
-                  </li>
-                """
+            if self.results:
+                html_content += '<ul style="line-height: 1.8;">'
+                for article in self.results:
+                    html_content += f"""
+                      <li>
+                        <strong>{article['source']}</strong><br>
+                        {article['title']}<br>
+                        <small style="color: #666;">Keywords: {article['keywords']} | Relevanz: {article['relevance']}</small>
+                      </li>
+                    """
+                html_content += '</ul>'
+            else:
+                html_content += '<p style="color: #999;">Keine Artikel gefunden.</p>'
             
             html_content += """
-                </ul>
-                <hr>
-                <p style="font-size: 12px; color: #666;">
-                  Diese Email wurde automatisch von GitHub Actions generiert.
+                <hr style="border: none; border-top: 1px solid #ccc; margin: 20px 0;">
+                <p style="font-size: 12px; color: #999;">
+                  Diese Email wurde automatisch von GitHub Actions generiert.<br>
+                  NIQ Geomarketing | Carsten Buchart
                 </p>
               </body>
             </html>
@@ -167,46 +163,30 @@ class GeomarketingNewsScraper:
             msg['Subject'] = subject
             msg['From'] = gmail_user
             msg['To'] = to_email
-            
             msg.attach(MIMEText(html_content, 'html'))
+            
+            print(f'📧 Versuche Email zu versenden an {to_email}...')
             
             with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
                 server.login(gmail_user, self.gmail_password)
                 server.send_message(msg)
             
-            print(f'✅ Email versendet an {to_email}')
+            print(f'✅ Email erfolgreich versendet an {to_email}')
             
         except smtplib.SMTPAuthenticationError:
-            print('❌ Gmail-Login fehlgeschlagen. Überprüfe App-Passwort.')
+            print('❌ Gmail-Login fehlgeschlagen. Überprüfe dein App-Passwort und dass es keine Leerzeichen hat.')
         except smtplib.SMTPException as e:
-            print(f'❌ Email-Fehler: {str(e)}')
+            print(f'❌ SMTP-Fehler: {str(e)}')
         except Exception as e:
             print(f'❌ Fehler beim Email-Versand: {str(e)}')
-    
-    def print_report(self):
-        """Drucke einen schönen Report in die Konsole"""
-        print('\n' + '=' * 80)
-        print('GEOMARKETING DAILY NEWS REPORT')
-        print('=' * 80)
-        print(f'Datum: {datetime.now().strftime("%d.%m.%Y %H:%M:%S")}')
-        print(f'Quellen gescannt: {len(SOURCES)}')
-        print(f'Artikel gefunden: {len(self.results)}\n')
-        
-        for article in self.results:
-            print(f'📰 [{article["source"]}] {article["title"][:70]}...')
-            print(f'   Keywords: {article["keywords"]} | Relevanz: {article["relevance"]}')
-            print()
-        
-        print('=' * 80)
 
 
 def main():
-    """Hauptfunktion — starte den Scraper"""
     import argparse
     
     parser = argparse.ArgumentParser(description='Geomarketing Daily News Aggregator')
     parser.add_argument('--output', default=None, help='JSON-Ausgabedatei')
-    parser.add_argument('--email', default=None, help='Email-Adresse für Report')
+    parser.add_argument('--email', default=None, help='Email-Adresse für Versand')
     
     args = parser.parse_args()
     
@@ -221,7 +201,9 @@ def main():
     if args.email:
         scraper.send_email(args.email)
     
-    scraper.print_report()
+    print('\n' + '=' * 80)
+    print('BERICHT ABGESCHLOSSEN')
+    print('=' * 80)
 
 
 if __name__ == '__main__':
