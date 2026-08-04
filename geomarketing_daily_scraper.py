@@ -4,106 +4,115 @@ import os
 from datetime import datetime
 from typing import List, Dict
 import requests
+from bs4 import BeautifulSoup
 import time
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 SOURCES = {
-    'DESTATIS': ['Standortanalyse', 'Demografie', 'Filialdichte'],
-    'BBSR': ['ÖPNV', 'Leerstand', 'Nahversorgung'],
-    'HDE': ['Filialschließung', 'Filialnetze', 'Mediareichweite'],
-    'IW Köln': ['Demografie', 'Kita', 'Bevölkerungsrückgang'],
-    'Reddit Geomarketing': ['Standortanalyse', 'Zentralität', 'Besucherfrequenzen'],
-    'NIQ Reports': ['Kaufkraft', 'Zentralität', 'Ladeinfrastruktur']
+    'DESTATIS': {
+        'url': 'https://www.destatis.de/DE/Themen/Branchen-Unternehmen/Einzelhandel/_inhalt.html',
+        'keywords': ['standortanalyse', 'filialdichte', 'einzelhandel', 'demografie', 'kommunal']
+    },
+    'IW Köln': {
+        'url': 'https://www.iwkoeln.de/presse.html',
+        'keywords': ['demografie', 'kita', 'bevölkerung', 'standort', 'kommunal']
+    },
+    'BBSR': {
+        'url': 'https://www.bbsr.bund.de/BBSR/DE/forschung/forschungsthemen/stadt-und-raumordnung/forschungsthemen-node.html',
+        'keywords': ['leerstand', 'öpnv', 'nahversorgung', 'infrastruktur', 'kommunal']
+    },
+    'Einzelhandelsverband': {
+        'url': 'https://www.einzelhandelsverband.de/presse',
+        'keywords': ['filialschließung', 'einzelhandel', 'expansion', 'standort', 'kommunal']
+    },
+    'ifh Köln': {
+        'url': 'https://www.ifh-koeln.de/news',
+        'keywords': ['einzelhandel', 'standort', 'filialnetzwerk', 'kaufkraft', 'kommunal']
+    },
+    'Stadt+Land': {
+        'url': 'https://www.stadt-land.de/news',
+        'keywords': ['stadtentwicklung', 'mixed-use', 'nahversorgung', 'standort', 'kommunal']
+    },
+    'Regiodata': {
+        'url': 'https://www.regiodata.eu/de/news-blog',
+        'keywords': ['geodaten', 'standortanalyse', 'demografie', 'kaufkraft', 'kommunal']
+    },
+    'mbi geodata': {
+        'url': 'https://www.mbi-geodata.de/news',
+        'keywords': ['geodaten', 'geomarketing', 'standort', 'zentralität', 'kommunal']
+    }
 }
 
 GEOMARKETING_KEYWORDS = [
     'standortanalyse', 'filialdichte', 'öpnv', 'demografie', 'besucherfrequenzen',
     'kita', 'leerstand', 'kaufkraft', 'zentralität', 'filialschließung',
-    'mixed-use', 'ladeinfrastruktur', 'nahversorgung', 'mediareichweite'
+    'mixed-use', 'ladeinfrastruktur', 'nahversorgung', 'mediareichweite',
+    'einzelhandel', 'bevölkerung', 'infrastruktur', 'expansion', 'geodaten',
+    'geomarketing', 'filialnetzwerk', 'stadtentwicklung', 'kommunal'
 ]
 
 class GeomarketingNewsScraper:
     def __init__(self, anthropic_api_key: str = None, debug: bool = False):
-        self.api_key = anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
-        if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not set.")
         self.results = []
-        self.base_url = 'https://api.anthropic.com/v1/messages'
-        self.gmail_password = os.getenv('GMAIL_PASSWORD', '')
         self.debug = debug
+        self.gmail_password = os.getenv('GMAIL_PASSWORD', '')
         
-    def search_source(self, source_name: str, keywords: List[str]) -> List[Dict]:
-        search_query = f"{source_name} {' '.join(keywords[:2])} 2024 2025"
+    def scrape_source(self, source_name: str, source_config: Dict) -> List[Dict]:
+        url = source_config['url']
+        keywords = source_config['keywords']
         
         if self.debug:
-            print(f'\n   🔎 Suche-Query: "{search_query}"')
-        
-        payload = {
-            'model': 'claude-sonnet-4-6',
-            'max_tokens': 800,
-            'tools': [{'type': 'web_search_20250305', 'name': 'web_search'}],
-            'messages': [{
-                'role': 'user',
-                'content': f'Finde 2-3 aktuelle News zu "{search_query}". Gib mir Titel und 2-3 Stichwörter pro Artikel.'
-            }]
-        }
-        
-        headers = {
-            'x-api-key': self.api_key,
-            'Content-Type': 'application/json'
-        }
+            print(f'\n   🔗 Scrape: {url}')
         
         try:
-            response = requests.post(self.base_url, json=payload, headers=headers, timeout=30)
-            
-            if self.debug:
-                print(f'   📊 Status-Code: {response.status_code}')
-            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
-            data = response.json()
             
             if self.debug:
-                print(f'   📝 API Response: {data}')
+                print(f'   📊 Status: {response.status_code}')
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
             
             articles = []
-            for content_block in data.get('content', []):
-                if content_block.get('type') == 'text':
-                    text = content_block.get('text', '')
-                    if self.debug:
-                        print(f'   ✓ Text-Block gefunden ({len(text)} chars)')
-                    
-                    if any(kw in text.lower() for kw in GEOMARKETING_KEYWORDS):
+            
+            # Suche nach News/Artikel-Containern
+            for link in soup.find_all('a', href=True):
+                link_text = link.get_text(strip=True)
+                link_url = link.get('href', '')
+                
+                # Filtere nach Relevanz
+                if any(kw in link_text.lower() for kw in GEOMARKETING_KEYWORDS):
+                    if len(link_text) > 10:  # Ignoriere zu kurze Texte
                         articles.append({
                             'source': source_name,
-                            'title': text[:150],
+                            'title': link_text[:150],
+                            'url': link_url if link_url.startswith('http') else url.split('/')[0] + '//' + url.split('/')[2] + link_url,
                             'keywords': ', '.join(keywords[:2]),
-                            'relevance': 'Hoch' if sum(text.lower().count(kw) for kw in GEOMARKETING_KEYWORDS) > 2 else 'Mittel',
+                            'relevance': 'Hoch' if sum(link_text.lower().count(kw) for kw in GEOMARKETING_KEYWORDS) > 1 else 'Mittel',
                             'timestamp': datetime.now().isoformat()
                         })
-                        if self.debug:
-                            print(f'   ✅ Keyword Match gefunden!')
-                    else:
-                        if self.debug:
-                            print(f'   ❌ Keine Keywords in Text gefunden')
             
-            return articles[:2]
+            if self.debug:
+                print(f'   ✅ {len(articles)} Artikel gefunden')
+            
+            return articles[:3]
             
         except Exception as e:
             print(f'❌ Fehler bei {source_name}: {str(e)}')
-            if self.debug:
-                import traceback
-                traceback.print_exc()
             return []
     
     def run_daily_scan(self):
         print(f'\n🔍 Starte tägliche Suche um {datetime.now().strftime("%H:%M:%S")}')
         print('=' * 80)
         
-        for source_name, keywords in SOURCES.items():
+        for source_name, source_config in SOURCES.items():
             print(f'\n📰 Durchsuche {source_name}…')
-            articles = self.search_source(source_name, keywords)
+            articles = self.scrape_source(source_name, source_config)
             self.results.extend(articles)
             
             if articles:
@@ -112,7 +121,7 @@ class GeomarketingNewsScraper:
             else:
                 print(f'  - Keine Ergebnisse')
             
-            time.sleep(0.5)
+            time.sleep(1)
         
         print(f'\n✅ {len(self.results)} Artikel gefunden.')
         return self.results
@@ -158,7 +167,9 @@ class GeomarketingNewsScraper:
                     html_content += '<li>'
                     html_content += f'<strong>{article["source"]}</strong><br>'
                     html_content += f'{article["title"]}<br>'
-                    html_content += f'<small style="color: #666;">Keywords: {article["keywords"]} | Relevanz: {article["relevance"]}</small>'
+                    if 'url' in article and article['url']:
+                        html_content += f'<a href="{article["url"]}" style="color: #E8672A;">Link</a><br>'
+                    html_content += f'<small style="color: #666;">Relevanz: {article["relevance"]}</small>'
                     html_content += '</li>'
                 html_content += '</ul>'
             else:
@@ -176,20 +187,16 @@ class GeomarketingNewsScraper:
             msg['To'] = to_email
             msg.attach(MIMEText(html_content, 'html'))
             
-            print(f'📧 Versuche Email zu versenden an {to_email}...')
+            print(f'📧 Email versenden an {to_email}…')
             
             with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
                 server.login(gmail_user, self.gmail_password)
                 server.send_message(msg)
             
-            print(f'✅ Email erfolgreich versendet an {to_email}')
+            print(f'✅ Email versendet')
             
-        except smtplib.SMTPAuthenticationError:
-            print('❌ Gmail-Login fehlgeschlagen. Überprüfe dein App-Passwort.')
-        except smtplib.SMTPException as e:
-            print(f'❌ SMTP-Fehler: {str(e)}')
         except Exception as e:
-            print(f'❌ Fehler beim Email-Versand: {str(e)}')
+            print(f'❌ Email-Fehler: {str(e)}')
 
 
 def main():
@@ -198,7 +205,7 @@ def main():
     parser = argparse.ArgumentParser(description='Geomarketing Daily News Aggregator')
     parser.add_argument('--output', default=None, help='JSON-Ausgabedatei')
     parser.add_argument('--email', default=None, help='Email-Adresse für Versand')
-    parser.add_argument('--debug', action='store_true', help='Debug-Modus aktivieren')
+    parser.add_argument('--debug', action='store_true', help='Debug-Modus')
     
     args = parser.parse_args()
     
@@ -214,7 +221,7 @@ def main():
         scraper.send_email(args.email)
     
     print('\n' + '=' * 80)
-    print('BERICHT ABGESCHLOSSEN')
+    print('BERICHT ABGESCHLOSSEN - 8 Quellen gescannt')
     print('=' * 80)
 
 
