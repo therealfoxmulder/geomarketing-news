@@ -10,18 +10,18 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 SOURCES = {
-    'DESTATIS': ['Einzelhandel', 'Demografie', 'Standort', 'Regionalentwicklung'],
-    'BBSR': ['Infrastruktur', 'Nahversorgung', 'Leerstand', 'Stadtentwicklung'],
-    'HDE': ['Filiale', 'Einzelhandelstrends', 'Versorgung', 'Filialnetz'],
-    'IW Köln': ['Konjunktur', 'Regional', 'Wirtschaft', 'Kita'],
-    'LinkedIn Geomarketing': ['Standortanalyse', 'Geomarketing', 'Location Intelligence'],
-    'NIQ Reports': ['Kaufkraft', 'Zentralität', 'Crowd Monitor']
+    'DESTATIS': ['Standortanalyse', 'Demografie', 'Filialdichte'],
+    'BBSR': ['ÖPNV', 'Leerstand', 'Nahversorgung'],
+    'HDE': ['Filialschließung', 'Filialnetze', 'Mediareichweite'],
+    'IW Köln': ['Demografie', 'Kita', 'Bevölkerungsrückgang'],
+    'LinkedIn Geomarketing': ['Standortanalyse', 'Zentralität', 'Besucherfrequenzen'],
+    'NIQ Reports': ['Kaufkraft', 'Zentralität', 'Ladeinfrastruktur']
 }
 
 GEOMARKETING_KEYWORDS = [
-    'standortanalyse', 'geomarketing', 'kaufkraft', 'zentralität', 'filialdichte',
-    'demografie', 'nahversorgung', 'infrastruktur', 'einzelhandel', 'ladeinfrastruktur',
-    'leerstand', 'besucherfrequenz', 'filialschließung', 'expansion', 'erreichbarkeit'
+    'standortanalyse', 'filialdichte', 'öpnv', 'demografie', 'besucherfrequenzen',
+    'kita', 'leerstand', 'kaufkraft', 'zentralität', 'filialschließung',
+    'mixed-use', 'ladeinfrastruktur', 'nahversorgung', 'mediareichweite'
 ]
 
 class GeomarketingNewsScraper:
@@ -34,7 +34,7 @@ class GeomarketingNewsScraper:
         self.gmail_password = os.getenv('GMAIL_PASSWORD', '')
         
     def search_source(self, source_name: str, keywords: List[str]) -> List[Dict]:
-        search_query = f"{source_name} {' '.join(keywords[:2])} 2024 2025 geomarketing"
+        search_query = f"{source_name} {' '.join(keywords[:2])} 2024 2025"
         
         payload = {
             'model': 'claude-sonnet-4-6',
@@ -42,7 +42,7 @@ class GeomarketingNewsScraper:
             'tools': [{'type': 'web_search_20250305', 'name': 'web_search'}],
             'messages': [{
                 'role': 'user',
-                'content': f'Finde 2-3 aktuelle News zu "{search_query}" für Geomarketing/Standortplanung relevant. Gib mir Titel und 2-3 Stichwörter pro Artikel.'
+                'content': f'Finde 2-3 aktuelle News zu "{search_query}". Gib mir Titel und 2-3 Stichwörter pro Artikel.'
             }]
         }
         
@@ -174,7 +174,7 @@ class GeomarketingNewsScraper:
             print(f'✅ Email erfolgreich versendet an {to_email}')
             
         except smtplib.SMTPAuthenticationError:
-            print('❌ Gmail-Login fehlgeschlagen. Überprüfe dein App-Passwort und dass es keine Leerzeichen hat.')
+            print('❌ Gmail-Login fehlgeschlagen. Überprüfe dein App-Passwort.')
         except smtplib.SMTPException as e:
             print(f'❌ SMTP-Fehler: {str(e)}')
         except Exception as e:
